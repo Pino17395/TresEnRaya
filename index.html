@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5ef">
+  <title>Tres en raya</title>
+  <style>
+    :root { color-scheme: light; --ink:#202b2b; --muted:#7b8580; --paper:#f7f5ef; --card:#fffefa; --line:#e7e5dc; --green:#287a62; --green-soft:#e7f2ed; --coral:#df765b; --shadow:0 24px 70px #263c3012,0 3px 12px #263c300b; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:32px 18px; background:radial-gradient(ellipse at 50% 0%,#e9eee4 0,transparent 48%),var(--paper); color:var(--ink); font-family:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",sans-serif }
+    .game { width:min(100%,430px); padding:34px; border:1px solid #ffffff; border-radius:28px; background:var(--card); box-shadow:var(--shadow) }
+    header { text-align:center; margin-bottom:26px }
+    .eyebrow { display:inline-flex; align-items:center; gap:7px; color:var(--green); background:var(--green-soft); border-radius:999px; padding:7px 11px; font-size:11px; font-weight:750; letter-spacing:.09em; text-transform:uppercase }
+    .eyebrow::before { content:""; width:6px;height:6px;border-radius:50%;background:currentColor }
+    h1 { margin:15px 0 5px; font-size:34px; line-height:1.1; letter-spacing:-.055em }
+    .subtitle { margin:0;color:var(--muted);font-size:14px }
+    .scoreboard { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:25px 0 19px }
+    .score { padding:13px 15px;border:1px solid var(--line);border-radius:15px;display:flex;align-items:center;justify-content:space-between;background:#fff }
+    .score.active { border-color:#b7d7c9;background:#f5faf7;box-shadow:inset 0 0 0 1px #dcece4 }
+    .player { display:flex;align-items:center;gap:9px;font-weight:650;font-size:13px }
+    .mark { font-weight:800;font-size:18px;line-height:1 }
+    .mark.x { color:var(--green) }.mark.o { color:var(--coral) }
+    .points { font-size:19px;font-weight:750;font-variant-numeric:tabular-nums }
+    .status { min-height:26px;display:flex;align-items:center;justify-content:center;gap:7px;margin:0 0 14px;text-align:center;font-size:14px;font-weight:650;color:#46554e }
+    .status .mark { font-size:16px }
+    .board { display:grid;grid-template-columns:repeat(3,1fr);gap:10px;aspect-ratio:1 }
+    .cell { display:grid;place-items:center;border:1px solid #e9e8df;border-radius:18px;background:#f6f5f0;cursor:pointer;transition:transform .14s ease,background .14s ease,border-color .14s ease; padding:0; font:inherit }
+    .cell:hover:enabled { transform:translateY(-2px);background:#eff3ed;border-color:#dce5db }
+    .cell:focus-visible,.reset:focus-visible { outline:3px solid #79ad95;outline-offset:3px }
+    .cell:disabled { cursor:default }
+    .cell .mark { font-size:clamp(42px,14vw,68px);animation:pop .18s ease-out }
+    .cell.winner { background:var(--green-soft);border-color:#a8d0bd }
+    @keyframes pop { from { transform:scale(.55);opacity:.3 } to { transform:scale(1);opacity:1 } }
+    .actions { display:flex;justify-content:center;margin-top:21px }
+    .reset { border:0;background:transparent;padding:10px 14px;border-radius:10px;color:var(--green);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s }
+    .reset:hover { background:var(--green-soft) }
+    .reset span { display:inline-block;margin-right:6px;font-size:16px;vertical-align:-1px }
+    .hint { margin:15px 0 0;color:#a1a8a1;text-align:center;font-size:11px }
+    @media(max-width:420px) { .game{padding:26px 20px;border-radius:23px}h1{font-size:30px}.board{gap:8px}.cell{border-radius:15px} }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important} }
+  </style>
+</head>
+<body>
+  <main class="game" aria-label="Juego de tres en raya">
+    <header>
+      <span class="eyebrow">Un clásico de siempre</span>
+      <h1>Tres en raya</h1>
+      <p class="subtitle">Una partida rápida entre dos</p>
+    </header>
+
+    <section class="scoreboard" aria-label="Marcador">
+      <div class="score active" id="score-x"><span class="player"><span class="mark x">×</span> Jugador 1</span><span class="points" id="points-x">0</span></div>
+      <div class="score" id="score-o"><span class="player"><span class="mark o">○</span> Jugador 2</span><span class="points" id="points-o">0</span></div>
+    </section>
+
+    <p class="status" id="status" aria-live="polite"><span class="mark x">×</span> Turno del Jugador 1</p>
+    <section class="board" id="board" role="grid" aria-label="Tablero de tres en raya"></section>
+    <div class="actions"><button class="reset" id="reset" type="button"><span aria-hidden="true">↻</span>Nueva partida</button></div>
+    <p class="hint">Alinea tres símbolos para ganar</p>
+  </main>
+  <script>
+    (() => {
+      const boardEl = document.querySelector('#board');
+      const statusEl = document.querySelector('#status');
+      const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+      let cells = Array(9).fill(null);
+      let current = 'x';
+      let finished = false;
+      let scores = { x: 0, o: 0 };
+
+      function render() {
+        boardEl.replaceChildren();
+        cells.forEach((value, index) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'cell';
+          button.setAttribute('role', 'gridcell');
+          button.setAttribute('aria-label', `Casilla ${index + 1}${value ? `, ${value === 'x' ? 'X' : 'O'}` : ', vacía'}`);
+          button.disabled = Boolean(value) || finished;
+          if (value) {
+            const mark = document.createElement('span');
+            mark.className = `mark ${value}`;
+            mark.textContent = value === 'x' ? '×' : '○';
+            button.append(mark);
+          }
+          button.addEventListener('click', () => play(index));
+          boardEl.append(button);
+        });
+        document.querySelector('#score-x').classList.toggle('active', !finished && current === 'x');
+        document.querySelector('#score-o').classList.toggle('active', !finished && current === 'o');
+      }
+
+      function play(index) {
+        if (finished || cells[index]) return;
+        cells[index] = current;
+        const line = wins.find(combo => combo.every(i => cells[i] === current));
+        if (line) {
+          finished = true;
+          scores[current]++;
+          document.querySelector(`#points-${current}`).textContent = scores[current];
+          statusEl.innerHTML = `<span class="mark ${current}">${current === 'x' ? '×' : '○'}</span> ¡Gana el Jugador ${current === 'x' ? '1' : '2'}!`;
+          render();
+          line.forEach(i => boardEl.children[i].classList.add('winner'));
+          return;
+        }
+        if (cells.every(Boolean)) {
+          finished = true;
+          statusEl.textContent = '¡Empate! Buen juego';
+          render();
+          return;
+        }
+        current = current === 'x' ? 'o' : 'x';
+        statusEl.innerHTML = `<span class="mark ${current}">${current === 'x' ? '×' : '○'}</span> Turno del Jugador ${current === 'x' ? '1' : '2'}`;
+        render();
+      }
+
+      function newGame() {
+        cells = Array(9).fill(null);
+        current = 'x';
+        finished = false;
+        statusEl.innerHTML = '<span class="mark x">×</span> Turno del Jugador 1';
+        render();
+        boardEl.children[0].focus();
+      }
+
+      document.querySelector('#reset').addEventListener('click', newGame);
+      render();
+    })();
+  </script>
+</body>
+</html>
